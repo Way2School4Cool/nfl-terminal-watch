@@ -3,52 +3,85 @@ package main
 import (
 	"fmt"
 	"nflTerminal/processors"
+	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+var json_game_data processors.GameData
+
+type tickMsg time.Time
+
 func main() {
 	// TODO: GET nfl games for the week
-	processors.GetGameData()
+	json_game_data = processors.GetGameData()
+
+	if len(json_game_data.Events) == 0 {
+		fmt.Println("No game data available. Exiting.")
+		return
+	}
 
 	// TODO: Update model with each game
 
-	/*
-		p := tea.NewProgram(initialModel())
+	displayModel := setModel()
 
-		if _, err := p.Run(); err != nil {
-			fmt.Printf("Alas, there's been an error: %v", err)
-			os.Exit(1)
-		}
-	*/
+	p := tea.NewProgram(displayModel)
+
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Alas, there's been an error: %v", err)
+		os.Exit(1)
+	}
 
 }
 
 type model struct {
-	choices  []string         // items on the to-do list
-	cursor   int              // which to-do list item our cursor is pointing at
-	selected map[int]struct{} // which to-do items are selected
+	header       string
+	choices      []string         // items on the to-do list
+	cursor       int              // which to-do list item our cursor is pointing at
+	selected     map[int]struct{} // which to-do items are selected
+	footer       string
+	tickDuration time.Duration
 }
 
 func initialModel() model {
 	return model{
-		// Our to-do list is a grocery list
-		choices: []string{"Buy carrots", "Buy celery", "Buy kohlrabi"},
-
-		// A map which indicates which choices are selected. We're using
-		// the  map like a mathematical set. The keys refer to the indexes
-		// of the `choices` slice, above.
-		selected: make(map[int]struct{}),
+		header:       fmt.Sprintf("NFL Games for Week %d, %d\n\n", json_game_data.Week.Number, json_game_data.Season.Year),
+		choices:      []string{},
+		selected:     make(map[int]struct{}),
+		footer:       fmt.Sprintf("\nPress q to quit. Updated: %s\n", time.Now().Format(time.RFC1123)),
+		tickDuration: 15 * time.Second,
 	}
 }
 
+func addChoice(choice string, mod model) model {
+	mod.choices = append(mod.choices, choice)
+	return mod
+}
+
+func updateFooter(mod model) model {
+	mod.footer = fmt.Sprintf("\nPress q to quit. Updated: %s\n", time.Now().Format(time.RFC1123))
+	return mod
+}
+
+func modelTickCmd(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
 func (m model) Init() tea.Cmd {
-	// Just return `nil`, which means "no I/O right now, please."
-	return nil
+	return modelTickCmd(m.tickDuration)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	case tickMsg:
+		json_game_data = processors.GetGameData()
+		displayModel := updateModel(m)
+		displayModel = updateFooter(displayModel)
+		return displayModel, modelTickCmd(m.tickDuration)
 
 	// Is it a key press?
 	case tea.KeyMsg:
@@ -91,7 +124,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	// The header
-	s := "What should we buy at the market?\n\n"
+	s := m.header
 
 	// Iterate over our choices
 	for i, choice := range m.choices {
@@ -113,8 +146,36 @@ func (m model) View() string {
 	}
 
 	// The footer
-	s += "\nPress q to quit.\n"
+	s += m.footer
 
 	// Send the UI for rendering
 	return s
+}
+
+func setModel() model {
+	displayModel := initialModel()
+
+	for _, event := range json_game_data.Events {
+		for _, competition := range event.Competitions {
+			team1 := competition.Competitors[0]
+			team2 := competition.Competitors[1]
+
+			displayModel = addChoice(fmt.Sprintf("%3s %s-%s %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation), displayModel)
+		}
+	}
+	return displayModel
+}
+
+func updateModel(m model) model {
+	m.choices = []string{}
+
+	for _, event := range json_game_data.Events {
+		for _, competition := range event.Competitions {
+			team1 := competition.Competitors[0]
+			team2 := competition.Competitors[1]
+
+			m = addChoice(fmt.Sprintf("%3s %s-%s %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation), m)
+		}
+	}
+	return m
 }

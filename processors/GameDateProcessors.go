@@ -35,7 +35,7 @@ type GameData struct {
 	} `json:"events"`
 }
 
-func GetGameData() {
+func GetGameData() GameData {
 	// Try the current week's scoreboard
 	resp, err := http.Get("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard")
 	if err != nil {
@@ -54,7 +54,7 @@ func GetGameData() {
 	}
 	if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Code == 404 {
 		log.Println("Error: API endpoint not found. The NFL season might be in offseason or the endpoint has changed.")
-		return
+		return GameData{}
 	}
 
 	jsonData := GameData{}
@@ -68,15 +68,19 @@ func GetGameData() {
 		log.Println("Warning: No events found in the response")
 	}
 
-	log.Printf("Successfully retrieved NFL data for season %d week %d", jsonData.Season.Year, jsonData.Week.Number)
-	for _, event := range jsonData.Events {
-		log.Printf("Event: %s", event.Name)
-		for _, competition := range event.Competitions {
-			for _, competitor := range competition.Competitors {
-				log.Printf("%s (%s): %s", competitor.Team.DisplayName, competitor.Team.Abbreviation, competitor.Score)
+	/*
+		log.Printf("Successfully retrieved NFL data for season %d week %d", jsonData.Season.Year, jsonData.Week.Number)
+		for _, event := range jsonData.Events {
+			log.Printf("Event: %s", event.Name)
+			for _, competition := range event.Competitions {
+				for _, competitor := range competition.Competitors {
+					log.Printf("%s (%s): %s", competitor.Team.DisplayName, competitor.Team.Abbreviation, competitor.Score)
+				}
 			}
+			log.Printf("Status: %s", event.Status.Type.Detail)
 		}
-		log.Printf("Status: %s", event.Status.Type.Detail)
-	}
+	*/
+
+	return jsonData
 
 }
