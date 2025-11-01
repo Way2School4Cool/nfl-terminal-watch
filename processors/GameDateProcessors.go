@@ -19,6 +19,7 @@ type GameData struct {
 		Name         string `json:"name"`
 		Competitions []struct {
 			Competitors []struct {
+				ID   string `json:"id"`
 				Team struct {
 					Abbreviation string `json:"abbreviation"`
 					DisplayName  string `json:"displayName"`
@@ -26,10 +27,19 @@ type GameData struct {
 				HomeAway string `json:"homeAway"`
 				Score    string `json:"score"`
 			} `json:"competitors"`
+			Situation struct {
+				LastPlay struct {
+					Team struct {
+						ID string `json:"id"`
+					} `json:"team"`
+					Text string `json:"text"`
+				} `json:"lastPlay"`
+			} `json:"situation"`
 		} `json:"competitions"`
 		Status struct {
 			Type struct {
-				Detail string `json:"detail"`
+				Name        string `json:"name"` // STATUS_SCHEDULED, STATUS_IN_PROGRESS, STATUS_FINAL
+				ShortDetail string `json:"shortDetail"`
 			} `json:"type"`
 		} `json:"status"`
 	} `json:"events"`
