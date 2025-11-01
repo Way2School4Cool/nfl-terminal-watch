@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"nflTerminal/processors"
 	"os"
+	"strings"
 	"time"
 
 	models "nflTerminal/models"
@@ -16,12 +17,14 @@ type model models.Model
 type tickMsg time.Time
 
 var json_game_data processors.GameData
+var lastPlay string
 
 var styleHeader = gloss.NewStyle().Bold(true).Underline(true).Foreground(gloss.Color("#00719b"))
-var styleFooter = gloss.NewStyle().Italic(true).Foreground(gloss.Color("#808080"))
-var styleInprogress = gloss.NewStyle().Bold(true).Foreground(gloss.Color("#00bd34"))
+var styleInprogress = gloss.NewStyle().Bold(true).Foreground(gloss.Color("#ffffff"))
 var styleScheduled = gloss.NewStyle().Bold(true).Foreground(gloss.Color("#808080"))
 var styleFinal = gloss.NewStyle().Bold(true).Foreground(gloss.Color("#bd0000"))
+var styleAdditionalInfo = gloss.NewStyle().Italic(true).Foreground(gloss.Color("#ffffff"))
+var styleFooter = gloss.NewStyle().Italic(true).Foreground(gloss.Color("#808080"))
 
 func main() {
 	// TODO: GET nfl games for the week
@@ -47,11 +50,12 @@ func main() {
 
 func initialModel() model {
 	return model{
-		Header:       styleHeader.Render(fmt.Sprintf("NFL Games for Week %d, %d", json_game_data.Week.Number, json_game_data.Season.Year)),
-		Choices:      []string{},
-		Selected:     make(map[int]struct{}),
-		Footer:       styleFooter.Render(fmt.Sprintf("\nPress q to quit. Updated: %s\n", time.Now().Format("15:04:05"))),
-		TickDuration: 15 * time.Second,
+		Header:         styleHeader.Render(fmt.Sprintf("NFL Games for Week %d, %d", json_game_data.Week.Number, json_game_data.Season.Year)),
+		Choices:        []string{},
+		Selected:       int(-1),
+		AdditionalInfo: styleAdditionalInfo.Render("\n\nMake a selection for additional info.\n"),
+		Footer:         styleFooter.Render(fmt.Sprintf("\nPress q to quit. Updated: %s\n", time.Now().Format("15:04:05"))),
+		TickDuration:   15 * time.Second,
 	}
 }
 
@@ -104,12 +108,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The "enter" key and the spacebar (a literal space) toggle
 		// the Selected state for the item that the Cursor is pointing at.
 		case "enter", " ":
-			_, ok := m.Selected[m.Cursor]
-			if ok {
-				delete(m.Selected, m.Cursor)
-			} else {
-				m.Selected[m.Cursor] = struct{}{}
+			m.Selected = m.Cursor
+
+			var lastPlayTeamAbbre string
+
+			competition := json_game_data.Events[m.Selected].Competitions[0]
+
+			lastPlay = competition.Situation.LastPlay.Text
+			lastPlayTeamID := competition.Situation.LastPlay.Team.ID
+
+			if lastPlayTeamID == competition.Competitors[0].ID {
+				lastPlayTeamAbbre = competition.Competitors[0].Team.Abbreviation
+			} else if lastPlayTeamID == competition.Competitors[1].ID {
+				lastPlayTeamAbbre = competition.Competitors[1].Team.Abbreviation
 			}
+
+			if lastPlay != strings.TrimSpace("") {
+				lastPlay = fmt.Sprintf("(%s): %s", lastPlayTeamAbbre, lastPlay)
+			} else {
+				lastPlay = "No recent play information available."
+			}
+
+			m.AdditionalInfo = styleAdditionalInfo.Render(fmt.Sprintf("\n\n%s\n", lastPlay))
 		}
 	}
 
@@ -133,13 +153,16 @@ func (m model) View() string {
 
 		// Is this choice Selected?
 		checked := " " // not Selected
-		if _, ok := m.Selected[i]; ok {
+		if m.Selected == i {
 			checked = "x" // Selected!
 		}
 
 		// Render the row
 		s += fmt.Sprintf("%s [%s] %s\n", Cursor, checked, choice)
 	}
+
+	// The Additional Information
+	s += m.AdditionalInfo
 
 	// The Footer
 	s += m.Footer
@@ -170,34 +193,19 @@ func generateChoices(m model) model {
 	final := []string{}
 
 	for _, event := range json_game_data.Events {
-		for _, competition := range event.Competitions {
-			team1 := competition.Competitors[0]
-			team2 := competition.Competitors[1]
+		competition := event.Competitions[0]
+		team1 := competition.Competitors[0]
+		team2 := competition.Competitors[1]
 
-			switch event.Status.Type.Name {
-			case "STATUS_FINAL":
-				final = append(final, styleFinal.Render(fmt.Sprintf("%3s %-2s-%2s %3s: %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation, event.Status.Type.ShortDetail)))
-			case "STATUS_IN_PROGRESS":
-				var lastPlayTeamAbbre string
-
-				lastPlay := competition.Situation.LastPlay.Text
-				lastPlayTeamID := competition.Situation.LastPlay.Team.ID
-
-				if lastPlayTeamID == competition.Competitors[0].ID {
-					lastPlayTeamAbbre = competition.Competitors[0].Team.Abbreviation
-				} else if lastPlayTeamID == competition.Competitors[1].ID {
-					lastPlayTeamAbbre = competition.Competitors[1].Team.Abbreviation
-				}
-
-				if lastPlay != "" {
-					lastPlay = fmt.Sprintf(" - (%s): %s", lastPlayTeamAbbre, lastPlay)
-				}
-
-				inprogress = append(inprogress, styleInprogress.Render(fmt.Sprintf("%3s %-2s-%2s %3s: %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation, lastPlay)))
-			case "STATUS_SCHEDULED":
-				scheduled = append(scheduled, styleScheduled.Render(fmt.Sprintf("%3s %-2s-%2s %3s: %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation, event.Status.Type.ShortDetail)))
-			}
+		switch event.Status.Type.Name {
+		case "STATUS_FINAL":
+			final = append(final, styleFinal.Render(fmt.Sprintf("%3s %-2s-%2s %3s: %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation, event.Status.Type.ShortDetail)))
+		case "STATUS_IN_PROGRESS":
+			inprogress = append(inprogress, styleInprogress.Render(fmt.Sprintf("%3s %-2s-%2s %3s: %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation, event.Status.Type.ShortDetail)))
+		case "STATUS_SCHEDULED":
+			scheduled = append(scheduled, styleScheduled.Render(fmt.Sprintf("%3s %-2s-%2s %3s: %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation, event.Status.Type.ShortDetail)))
 		}
+
 	}
 
 	m.Choices = append(m.Choices, inprogress...)
