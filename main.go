@@ -81,6 +81,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		json_game_data = processors.GetGameData()
 		displayModel := updateModel(m)
 		displayModel = updateFooter(displayModel)
+
+		if m.Selected != -1 {
+			displayModel.AdditionalInfo = styleAdditionalInfo.Render(fmt.Sprintf("\n\n%s\n", updateLastPlay(m.Selected)))
+		}
+
 		return displayModel, modelTickCmd(m.TickDuration)
 
 	// Is it a key press?
@@ -110,26 +115,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", " ":
 			m.Selected = m.Cursor
 
-			var lastPlayTeamAbbre string
-
-			competition := json_game_data.Events[m.Selected].Competitions[0]
-
-			lastPlay = competition.Situation.LastPlay.Text
-			lastPlayTeamID := competition.Situation.LastPlay.Team.ID
-
-			if lastPlayTeamID == competition.Competitors[0].ID {
-				lastPlayTeamAbbre = competition.Competitors[0].Team.Abbreviation
-			} else if lastPlayTeamID == competition.Competitors[1].ID {
-				lastPlayTeamAbbre = competition.Competitors[1].Team.Abbreviation
-			}
-
-			if lastPlay != strings.TrimSpace("") {
-				lastPlay = fmt.Sprintf("(%s): %s", lastPlayTeamAbbre, lastPlay)
-			} else {
-				lastPlay = "No recent play information available."
-			}
-
-			m.AdditionalInfo = styleAdditionalInfo.Render(fmt.Sprintf("\n\n%s\n", lastPlay))
+			m.AdditionalInfo = styleAdditionalInfo.Render(fmt.Sprintf("\n\n%s\n", updateLastPlay(m.Selected)))
 		}
 	}
 
@@ -204,6 +190,8 @@ func generateChoices(m model) model {
 			inprogress = append(inprogress, styleInprogress.Render(fmt.Sprintf("%3s %-2s-%2s %3s: %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation, event.Status.Type.ShortDetail)))
 		case "STATUS_SCHEDULED":
 			scheduled = append(scheduled, styleScheduled.Render(fmt.Sprintf("%3s %-2s-%2s %3s: %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation, event.Status.Type.ShortDetail)))
+		default:
+			inprogress = append(inprogress, styleInprogress.Render(fmt.Sprintf("%3s %-2s-%2s %3s: %s", team1.Team.Abbreviation, team1.Score, team2.Score, team2.Team.Abbreviation, event.Status.Type.ShortDetail)))
 		}
 
 	}
@@ -213,4 +201,27 @@ func generateChoices(m model) model {
 	m.Choices = append(m.Choices, final...)
 
 	return m
+}
+
+func updateLastPlay(selection int) string {
+	var lastPlayTeamAbbre string
+
+	competition := json_game_data.Events[selection].Competitions[0]
+
+	lastPlay = competition.Situation.LastPlay.Text
+	lastPlayTeamID := competition.Situation.LastPlay.Team.ID
+
+	if lastPlayTeamID == competition.Competitors[0].ID {
+		lastPlayTeamAbbre = competition.Competitors[0].Team.Abbreviation
+	} else if lastPlayTeamID == competition.Competitors[1].ID {
+		lastPlayTeamAbbre = competition.Competitors[1].Team.Abbreviation
+	}
+
+	if lastPlay != strings.TrimSpace("") {
+		lastPlay = fmt.Sprintf("(%s): %s", lastPlayTeamAbbre, lastPlay)
+	} else {
+		lastPlay = "No recent play information available."
+	}
+
+	return competition.Situation.LastPlay.Text
 }
